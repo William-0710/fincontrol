@@ -7,39 +7,47 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 1. Criamos a lista fixa de categorias
 enum Category {
-  FOOD        // Alimentação
-  TRANSPORT   // Transporte
-  HOUSING     // Moradia
-  SHOPPING    // Compras
-  SALARY      // Salário
-  OTHER       // Outros
+  FOOD
+  TRANSPORT
+  HOUSING
+  SHOPPING
+  SALARY
+  OTHER
 }
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  createdAt DateTime @default(now())
-
+  id           String        @id @default(uuid())
+  name         String
+  email        String        @unique
+  password     String
+  createdAt    DateTime      @default(now())
   transactions Transaction[]
+  goals        Goal[]        // 🚀 ADICIONADO: Relação com as caixinhas
 }
 
 model Transaction {
   id          String   @id @default(uuid())
   amount      Float
   type        String   // INCOME | EXPENSE
-  
-  // 2. Adicionamos o campo de categoria na tabela
-  // Colocamos @default(OTHER) para não quebrar as transações que você já criou antes!
-  category    Category @default(OTHER) 
-  
+  category    Category @default(OTHER)
   description String
   date        DateTime
   createdAt   DateTime @default(now())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+}
 
-  userId String
-  user   User @relation(fields: [userId], references: [id])
+// 🚀 NOVO MODELO: CAIXINHAS (METAS)
+model Goal {
+  id          String   @id @default(uuid())
+  name        String   // Nome da caixinha (ex: "Novo PC", "Reserva")
+  target      Float    // Valor final da meta
+  current     Float    @default(0) // Valor já guardado
+  icon        String   @default("Wallet") // Nome do ícone do Lucide
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
 }
