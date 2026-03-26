@@ -8,12 +8,17 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
-  @Post()
-  create(@Request() req, @Body() createTransactionDto: CreateTransactionDto) {
-    return this.transactionsService.create(req.user.sub, createTransactionDto);
+  // 🛡️ Função Sênior para garantir que sempre vamos achar o ID do usuário no Token
+  private getUserId(req: any): string {
+    return req.user?.sub || req.user?.userId || req.user?.id;
   }
 
-  // Recebemos os novos parâmetros da URL (Query Params)
+  @Post()
+  create(@Request() req, @Body() createTransactionDto: CreateTransactionDto) {
+    const userId = this.getUserId(req);
+    return this.transactionsService.create(userId, createTransactionDto);
+  }
+
   @Get()
   findAll(
     @Request() req,
@@ -23,21 +28,20 @@ export class TransactionsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    // Convertemos os parâmetros da URL (que chegam como texto) para números
     const pageNumber = page ? parseInt(page) : 1;
     const limitNumber = limit ? parseInt(limit) : 5;
+    const userId = this.getUserId(req);
     
-    // Passamos tudo para o serviço que acabaste de atualizar
-    return this.transactionsService.findAll(req.user.sub, search, type, period, pageNumber, limitNumber);
+    return this.transactionsService.findAll(userId, search, type, period, pageNumber, limitNumber);
   }
 
   @Get(':id')
   findOne(@Request() req, @Param('id') id: string) {
-    return this.transactionsService.findOne(id, req.user.sub);
+    return this.transactionsService.findOne(id, this.getUserId(req));
   }
 
   @Delete(':id')
   remove(@Request() req, @Param('id') id: string) {
-    return this.transactionsService.remove(id, req.user.sub);
+    return this.transactionsService.remove(id, this.getUserId(req));
   }
 }
