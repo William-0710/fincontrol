@@ -139,8 +139,6 @@ export default function App() {
 
   const summary = useMemo(() => {
     return filteredTransactions.reduce((acc, t) => {
-      // Ignora as movimentações internas das caixinhas para o saldo circulante
-      // (Opcional se o backend já tratar isso como despesa/receita)
       if (t.type === 'INCOME') acc.income += t.amount;
       else acc.expense += t.amount;
       acc.balance = acc.income - acc.expense;
@@ -234,25 +232,96 @@ export default function App() {
     <div className="min-h-screen bg-[#050505] text-slate-200 flex font-sans overflow-x-hidden">
       
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+
         select option { background-color: #111 !important; color: #fff !important; }
+
         @media print {
-          aside, .no-print { display: none !important; }
-          body { background: white !important; color: black !important; padding: 0 !important; margin: 0 !important; }
-          main { width: 100% !important; padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
+          aside, .no-print, button, .modal { display: none !important; }
+          
+          body { 
+            background: white !important; 
+            color: #1e293b !important; 
+            padding: 0 !important; 
+            margin: 0 !important;
+            font-family: 'Inter', sans-serif !important;
+          }
+
+          main { width: 100% !important; max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
           .print-only { display: block !important; }
-          .pdf-container { padding: 40px; font-family: 'Inter', sans-serif; }
-          .pdf-header { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 30px; border-radius: 20px; color: white !important; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
-          .pdf-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
-          .pdf-table th { color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; padding: 10px 15px; text-align: left; }
-          .pdf-table tr { background: #f8fafc; border-radius: 10px; }
-          .pdf-table td { padding: 15px; font-size: 11px; color: #1e293b; border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; }
-          .pdf-table td:first-child { border-left: 1px solid #f1f5f9; border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
-          .pdf-table td:last-child { border-right: 1px solid #f1f5f9; border-top-right-radius: 10px; border-bottom-right-radius: 10px; text-align: right; font-weight: 800; }
-          .pdf-badge { padding: 4px 10px; border-radius: 6px; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+
+          .pdf-container { padding: 50px; background: white; }
+
+          .pdf-header { 
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); 
+            padding: 40px; 
+            border-radius: 30px; 
+            color: white !important; 
+            margin-bottom: 40px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            box-shadow: 0 10px 20px rgba(79, 70, 229, 0.2);
+          }
+
+          .pdf-header h1 { font-weight: 900; text-transform: uppercase; letter-spacing: -1px; font-style: italic; margin: 0; font-size: 28px; }
+          .pdf-header p { opacity: 0.8; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
+
+          .pdf-summary { 
+            display: grid; 
+            grid-template-cols: repeat(3, 1fr); 
+            gap: 20px; 
+            margin-bottom: 50px; 
+          }
+
+          .pdf-card { 
+            background: #f8fafc; 
+            padding: 25px; 
+            border-radius: 20px; 
+            border: 1px solid #e2e8f0;
+            text-align: center;
+          }
+
+          .pdf-card span { font-size: 10px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+          .pdf-card h2 { font-size: 20px; font-weight: 900; margin-top: 5px; color: #1e293b; }
+          .pdf-card.highlight { background: #4f46e5; border: none; }
+          .pdf-card.highlight span, .pdf-card.highlight h2 { color: white !important; }
+
+          .pdf-table { width: 100%; border-collapse: separate; border-spacing: 0 10px; }
+          .pdf-table th { 
+            text-align: left; 
+            padding: 15px; 
+            font-size: 10px; 
+            font-weight: 900; 
+            color: #94a3b8; 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            border-bottom: 2px solid #f1f5f9;
+          }
+
+          .pdf-table tr { background: #ffffff; }
+          .pdf-table td { 
+            padding: 18px 15px; 
+            font-size: 12px; 
+            color: #334155; 
+            border-top: 1px solid #f1f5f9; 
+            border-bottom: 1px solid #f1f5f9; 
+          }
+
+          .pdf-table td:first-child { border-left: 1px solid #f1f5f9; border-top-left-radius: 15px; border-bottom-left-radius: 15px; font-weight: 700; }
+          .pdf-table td:last-child { border-right: 1px solid #f1f5f9; border-top-right-radius: 15px; border-bottom-right-radius: 15px; text-align: right; font-weight: 900; font-size: 14px; }
+
+          .pdf-badge { 
+            padding: 6px 12px; 
+            border-radius: 8px; 
+            font-size: 9px; 
+            font-weight: 900; 
+            text-transform: uppercase; 
+          }
           .badge-income { background: #dcfce7; color: #15803d; }
           .badge-expense { background: #fee2e2; color: #b91c1c; }
-          .pdf-summary { display: grid; grid-template-cols: repeat(3, 1fr); gap: 20px; margin-top: 30px; }
-          .summary-item { background: #f1f5f9; padding: 20px; border-radius: 15px; text-align: center; }
+
+          .pdf-footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
         }
         .print-only { display: none; }
       `}</style>
@@ -287,6 +356,69 @@ export default function App() {
 
       <main className="flex-1 p-8 lg:p-12 max-w-7xl mx-auto w-full overflow-y-auto">
         
+        {/* 🚀 RELATÓRIO PDF PREMIUM (Aparece apenas na impressão) */}
+        <div className="print-only pdf-container">
+          <div className="pdf-header">
+            <div>
+              <h1>FinControl <span style={{opacity: 0.6}}>SaaS</span></h1>
+              <p>Relatório de Performance Financeira</p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ marginBottom: '5px' }}>Emitido em</p>
+              <h2 style={{ fontSize: '18px', fontWeight: 900 }}>{new Date().toLocaleDateString('pt-BR')}</h2>
+            </div>
+          </div>
+
+          <div className="pdf-summary">
+            <div className="pdf-card">
+              <span>Receitas Totais</span>
+              <h2 style={{ color: '#059669' }}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.income)}</h2>
+            </div>
+            <div className="pdf-card">
+              <span>Despesas Totais</span>
+              <h2 style={{ color: '#dc2626' }}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.expense)}</h2>
+            </div>
+            <div className="pdf-card highlight">
+              <span>Saldo Consolidado</span>
+              <h2>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.balance)}</h2>
+            </div>
+          </div>
+
+          <table className="pdf-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Descrição</th>
+                <th>Categoria</th>
+                <th>Tipo</th>
+                <th>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTransactions.map(t => {
+                const category = categoriesMap[t.category as keyof typeof categoriesMap] || categoriesMap.OTHER;
+                return (
+                  <tr key={t.id}>
+                    <td>{new Date(t.date).toLocaleDateString('pt-BR')}</td>
+                    <td style={{ textTransform: 'uppercase', fontWeight: 800, color: '#1e293b' }}>{t.description}</td>
+                    <td>{category.label}</td>
+                    <td>
+                      <span className={`pdf-badge ${t.type === 'INCOME' ? 'badge-income' : 'badge-expense'}`}>
+                        {t.type === 'INCOME' ? 'Crédito' : 'Débito'}
+                      </span>
+                    </td>
+                    <td>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <div className="pdf-footer">
+            Este documento foi gerado automaticamente pelo sistema FinControl. Protegido por criptografia JWT.
+          </div>
+        </div>
+
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-12 no-print">
           <div>
@@ -396,8 +528,8 @@ export default function App() {
                   {months.map((m, idx) => <option key={m} value={idx.toString()}>{m}</option>)}
                 </select>
                 <div className="flex p-1.5 bg-[#0f0f0f] rounded-[1.5rem] border border-white/5">
-                  <button onClick={() => setFilterType('ALL')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filterType === 'ALL' ? 'bg-white/10 text-white' : 'text-slate-600 hover:text-slate-400'}`}>Tudo</button>
-                  <button onClick={() => setFilterType('INCOME')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filterType === 'INCOME' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-600 hover:text-slate-400'}`}>Créditos</button>
+                  <button onClick={() => setFilterType('ALL')} className={`px-6 py-3 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest ${filterType === 'ALL' ? 'bg-white/10 text-white' : 'text-slate-600 hover:text-slate-400'}`}>Tudo</button>
+                  <button onClick={() => setFilterType('INCOME')} className={`px-6 py-3 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest ${filterType === 'INCOME' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-600 hover:text-slate-400'}`}>Créditos</button>
                   <button onClick={() => setFilterType('EXPENSE')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filterType === 'EXPENSE' ? 'bg-rose-500/20 text-rose-400' : 'text-slate-600 hover:text-slate-400'}`}>Débitos</button>
                 </div>
               </div>
