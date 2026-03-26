@@ -1,7 +1,7 @@
-import axios from "axios";
+import axios from 'axios';
 
 export const api = axios.create({
-  baseURL: "http://localhost:3333",
+  baseURL: 'https://natural-liberation-production-27cf.up.railway.app', 
 });
 
 api.interceptors.request.use((config) => {
