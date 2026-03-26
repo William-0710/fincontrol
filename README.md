@@ -84,22 +84,3 @@ William Correia de Andrade Estudante de Análise e Desenvolvimento de Sistemas |
 💻 GitHub: https://github.com/William-0710
 
 🔗 LinkedIn: https://www.linkedin.com/in/william-correia-de-andrade/
-
-## ⚙️ Configuração Local
-
-### 1. Clone o repositório
-```bash
-git clone [https://github.com/William-0710/fincontrol.git](https://github.com/William-0710/fincontrol.git)
-cd fincontrol
-
-cd fincontrol-backend
-npm install
-# Crie o .env com DATABASE_URL e JWT_SECRET
-npx prisma generate
-npm run start:dev
-
-cd ../fincontrol-frontend
-npm install
-# Crie o .env com NEXT_PUBLIC_API_URL=http://localhost:3333
-npm run dev
-
