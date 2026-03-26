@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { api } from '../../services/api'; // 🔌 CONECTANDO COM O SEU BACKEND
 import { 
   Activity, TrendingUp, TrendingDown, 
   LayoutDashboard, Receipt, Wallet, X, PlusCircle,
@@ -8,21 +10,8 @@ import {
   Search, FileText, Calendar, PieChart as PieChartIcon,
   ChevronDown, ArrowUpRight, ArrowDownRight,
   ChevronRight, Lock, Unlock, ArrowRightLeft,
-  Printer
+  Printer, LogOut
 } from 'lucide-react';
-
-// ============================================================================
-// CONFIGURAÇÕES E TIPOS
-// ============================================================================
-const initialTransactions = [
-  { id: '1', description: 'Salário Mensal', amount: 12500, type: 'INCOME', category: 'SALARY', date: '2024-03-01T10:00:00Z' },
-  { id: '2', description: 'Restaurante Japa', amount: 220.00, type: 'EXPENSE', category: 'FOOD', date: '2024-03-18T20:00:00Z' },
-  { id: '3', description: 'Supermercado', amount: 850.50, type: 'EXPENSE', category: 'FOOD', date: '2024-03-05T15:00:00Z' },
-  { id: '4', description: 'Aluguel Loft', amount: 2500.00, type: 'EXPENSE', category: 'HOUSING', date: '2024-03-12T09:00:00Z' },
-  { id: '5', description: 'Freelance UI Design', amount: 3200.00, type: 'INCOME', category: 'OTHER', date: '2024-03-15T14:00:00Z' },
-  { id: '6', description: 'Uber Viagens', amount: 145.00, type: 'EXPENSE', category: 'TRANSPORT', date: '2024-03-10T11:00:00Z' },
-  { id: '7', description: 'Shopping', amount: 450.00, type: 'EXPENSE', category: 'SHOPPING', date: '2024-03-22T16:00:00Z' },
-];
 
 const categoriesMap = {
   FOOD: { label: 'Alimentação', icon: Coffee, bg: 'bg-orange-500/20', fill: 'bg-orange-500', color: 'text-orange-500' },
@@ -39,16 +28,20 @@ const months = [
 ];
 
 export default function App() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TRANSACTIONS' | 'VAULT'>('DASHBOARD');
-  const [transactions, setTransactions] = useState(initialTransactions);
-  const [vaultBalance, setVaultBalance] = useState(4500.00); // Dinheiro guardado
+  
+  // 🚀 ESTADOS AGORA COMEÇAM VAZIOS (Esperando a API)
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
   
   // Estados de Filtro
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
-  const [filterMonth, setFilterMonth] = useState<string>('2'); // Março
+  const [filterMonth, setFilterMonth] = useState<string>('ALL');
 
   // Estados Formulário Transação
   const [desc, setDesc] = useState('');
@@ -60,7 +53,49 @@ export default function App() {
   const [vaultAmount, setVaultAmount] = useState('');
   const [vaultAction, setVaultAction] = useState<'DEPOSIT' | 'WITHDRAW'>('DEPOSIT');
 
-  // Lógica de Filtro
+  // 🔌 BUSCAR DADOS REAIS DO BACKEND
+  const loadData = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('fincontrol.token');
+      if (!token) {
+        router.push('/login'); // Se não tiver token, expulsa pra tela de login
+        return;
+      }
+      
+      // Busca as transações sem limite de paginação para o cálculo do dashboard
+      const response = await api.get('/transactions?limit=1000');
+      // O seu backend devolve { data: [...], meta: {...} }
+      setTransactions(response.data.data || []);
+    } catch (err: any) {
+      console.error("Erro ao carregar dados:", err);
+      if (err.response?.status === 401) {
+        localStorage.removeItem('fincontrol.token');
+        router.push('/login');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [router]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('fincontrol.token');
+    router.push('/login');
+  };
+
+  // 🧠 CÁLCULO INTELIGENTE DO COFRE (Lendo o histórico real)
+  const vaultBalance = useMemo(() => {
+    return transactions.reduce((acc, t) => {
+      if (t.description === 'Depósito no Cofre 🔒') return acc + t.amount;
+      if (t.description === 'Resgate do Cofre 🔓') return acc - t.amount;
+      return acc;
+    }, 0);
+  }, [transactions]);
+
+  // Lógica de Filtro Frontend
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
       const matchesSearch = t.description.toLowerCase().includes(search.toLowerCase());
@@ -68,23 +103,27 @@ export default function App() {
       const txDate = new Date(t.date);
       const matchesMonth = filterMonth === 'ALL' || txDate.getMonth() === parseInt(filterMonth);
       return matchesSearch && matchesType && matchesMonth;
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    });
   }, [transactions, search, filterType, filterMonth]);
 
-  // Sumário Financeiro
+  // Sumário Financeiro Real
   const summary = useMemo(() => {
     return filteredTransactions.reduce((acc, t) => {
+      // Ignora as movimentações do cofre no fluxo de caixa normal
+      if (t.description === 'Depósito no Cofre 🔒' || t.description === 'Resgate do Cofre 🔓') return acc;
+      
       if (t.type === 'INCOME') acc.income += t.amount;
       else acc.expense += t.amount;
+      
       acc.balance = acc.income - acc.expense;
       return acc;
     }, { income: 0, expense: 0, balance: 0 });
   }, [filteredTransactions]);
 
-  // Estatísticas de Gastos
+  // Estatísticas de Gastos Reais
   const categoryStats = useMemo(() => {
     const stats: Record<string, number> = {};
-    filteredTransactions.filter(t => t.type === 'EXPENSE').forEach(t => {
+    filteredTransactions.filter(t => t.type === 'EXPENSE' && t.description !== 'Depósito no Cofre 🔒').forEach(t => {
       stats[t.category] = (stats[t.category] || 0) + t.amount;
     });
     const total = Object.values(stats).reduce((a, b) => a + b, 0);
@@ -95,80 +134,82 @@ export default function App() {
     })).sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
 
-  const handleAddTransaction = (e: React.FormEvent) => {
+  // 🔌 SALVAR TRANSAÇÃO REAL NO BACKEND
+  const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!desc || !val) return;
-    const newTx = {
-      id: Math.random().toString(),
-      description: desc,
-      amount: Number(val),
-      type: tType,
-      category: cat,
-      date: new Date().toISOString()
-    };
-    setTransactions([newTx, ...transactions]);
-    setIsModalOpen(false);
-    setDesc(''); setVal('');
+    
+    try {
+      await api.post('/transactions', {
+        description: desc,
+        amount: Number(val),
+        type: tType,
+        category: cat,
+        date: new Date().toISOString()
+      });
+      
+      setIsModalOpen(false);
+      setDesc(''); setVal('');
+      await loadData(); // Recarrega os dados do banco após salvar
+    } catch (err) {
+      alert("Erro ao salvar transação. Verifique o console.");
+      console.error(err);
+    }
   };
 
-  const handleVaultOperation = (e: React.FormEvent) => {
+  // 🔌 SALVAR OPERAÇÃO DE COFRE NO BACKEND
+  const handleVaultOperation = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = Number(vaultAmount);
     if (!amount || amount <= 0) return;
 
-    if (vaultAction === 'DEPOSIT') {
-      // Tira do circulante e põe no cofre (cria uma despesa "Cofre")
-      const newTx = {
-        id: Math.random().toString(),
-        description: 'Depósito no Cofre 🔒',
-        amount: amount,
-        type: 'EXPENSE',
-        category: 'OTHER',
-        date: new Date().toISOString()
-      };
-      setTransactions([newTx, ...transactions]);
-      setVaultBalance(prev => prev + amount);
-    } else {
-      // Tira do cofre e volta pro circulante (cria uma receita "Resgate")
-      if (amount > vaultBalance) return;
-      const newTx = {
-        id: Math.random().toString(),
-        description: 'Resgate do Cofre 🔓',
-        amount: amount,
-        type: 'INCOME',
-        category: 'OTHER',
-        date: new Date().toISOString()
-      };
-      setTransactions([newTx, ...transactions]);
-      setVaultBalance(prev => prev - amount);
+    try {
+      if (vaultAction === 'DEPOSIT') {
+        await api.post('/transactions', {
+          description: 'Depósito no Cofre 🔒',
+          amount: amount,
+          type: 'EXPENSE', // Tira do circulante
+          category: 'OTHER',
+          date: new Date().toISOString()
+        });
+      } else {
+        if (amount > vaultBalance) {
+          alert("Saldo insuficiente no cofre!");
+          return;
+        }
+        await api.post('/transactions', {
+          description: 'Resgate do Cofre 🔓',
+          amount: amount,
+          type: 'INCOME', // Volta pro circulante
+          category: 'OTHER',
+          date: new Date().toISOString()
+        });
+      }
+      setIsVaultModalOpen(false);
+      setVaultAmount('');
+      await loadData(); // Recarrega do banco
+    } catch (err) {
+      alert("Erro na operação do cofre.");
     }
-    setVaultAmount('');
-    setIsVaultModalOpen(false);
   };
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white font-black text-2xl animate-pulse">Carregando seus dados seguros...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 flex font-sans overflow-x-hidden">
       
+      {/* O CSS DE IMPRESSÃO CONTINUA AQUI INTACTO */}
       <style>{`
         select option { background-color: #111 !important; color: #fff !important; }
-        
         @media print {
           aside, .no-print { display: none !important; }
           body { background: white !important; color: black !important; padding: 0 !important; margin: 0 !important; }
           main { width: 100% !important; padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
           .print-only { display: block !important; }
-          
           .pdf-container { padding: 40px; font-family: 'Inter', sans-serif; }
-          .pdf-header { 
-            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); 
-            padding: 30px; 
-            border-radius: 20px; 
-            color: white !important;
-            margin-bottom: 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          }
+          .pdf-header { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 30px; border-radius: 20px; color: white !important; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
           .pdf-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
           .pdf-table th { color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; padding: 10px 15px; text-align: left; }
           .pdf-table tr { background: #f8fafc; border-radius: 10px; }
@@ -194,42 +235,26 @@ export default function App() {
         </div>
         
         <nav className="space-y-3 flex-1">
-          <button 
-            onClick={() => setActiveTab('DASHBOARD')}
-            className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl font-black transition-all ${activeTab === 'DASHBOARD' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}
-          >
+          <button onClick={() => setActiveTab('DASHBOARD')} className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl font-black transition-all ${activeTab === 'DASHBOARD' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>
             <div className="flex items-center gap-3"><LayoutDashboard size={20}/> Dashboard</div>
             {activeTab === 'DASHBOARD' && <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>}
           </button>
           
-          <button 
-            onClick={() => setActiveTab('TRANSACTIONS')}
-            className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl font-black transition-all ${activeTab === 'TRANSACTIONS' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}
-          >
+          <button onClick={() => setActiveTab('TRANSACTIONS')} className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl font-black transition-all ${activeTab === 'TRANSACTIONS' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>
             <div className="flex items-center gap-3"><Receipt size={20}/> Transações</div>
             {activeTab === 'TRANSACTIONS' && <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>}
           </button>
 
-          <button 
-            onClick={() => setActiveTab('VAULT')}
-            className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl font-black transition-all ${activeTab === 'VAULT' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}
-          >
+          <button onClick={() => setActiveTab('VAULT')} className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl font-black transition-all ${activeTab === 'VAULT' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>
             <div className="flex items-center gap-3"><Lock size={20}/> Meu Cofre</div>
             {activeTab === 'VAULT' && <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>}
           </button>
         </nav>
 
-        {/* Card Meta - Roxo conforme imagem */}
-        <div className="mt-auto p-6 bg-[#4f46e5] rounded-[2.5rem] relative overflow-hidden group shadow-2xl">
-          <div className="absolute top-0 right-0 p-4 opacity-20 transform translate-x-2 -translate-y-2">
-            <Wallet size={80} className="text-white"/>
-          </div>
-          <h4 className="text-xl font-black text-white mb-2 leading-tight">Meta de Economia</h4>
-          <p className="text-indigo-100 text-xs font-medium mb-6 opacity-80 leading-relaxed">Você já atingiu 65% da sua meta mensal de reserva de emergência.</p>
-          <button className="flex items-center gap-2 bg-white text-indigo-600 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-wider hover:scale-105 transition-all shadow-lg">
-            Ver Detalhes <ChevronRight size={14}/>
-          </button>
-        </div>
+        {/* Botão de Sair Real */}
+        <button onClick={handleLogout} className="mt-auto flex items-center justify-center gap-3 w-full p-4 border border-rose-500/20 bg-rose-500/5 text-rose-500 hover:bg-rose-500 hover:text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all">
+          <LogOut size={16}/> Sair da Conta
+        </button>
       </aside>
 
       {/* Main Content */}
@@ -240,7 +265,7 @@ export default function App() {
           <div className="pdf-header">
             <div>
               <h1 className="text-3xl font-black uppercase tracking-tighter italic">Relatório de Desempenho</h1>
-              <p className="text-xs font-bold uppercase tracking-widest opacity-80 mt-1">Status Consolidado • {months[parseInt(filterMonth)]} 2024</p>
+              <p className="text-xs font-bold uppercase tracking-widest opacity-80 mt-1">Status Consolidado • 2024</p>
             </div>
             <div className="text-right">
               <p className="text-2xl font-black italic">FinControl</p>
@@ -316,7 +341,6 @@ export default function App() {
 
         {/* Resumo Dinâmico */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12 no-print">
-          {/* Card de Saldo Circulante */}
           <div className="bg-white/[0.03] border border-white/5 p-10 rounded-[3rem] relative group overflow-hidden">
              <div className="absolute top-0 right-0 p-8 opacity-5">
                 <Unlock size={80} className="text-white"/>
@@ -328,7 +352,6 @@ export default function App() {
              </div>
           </div>
 
-          {/* Card de Cofre */}
           <div className="bg-indigo-600/[0.04] border border-indigo-600/20 p-10 rounded-[3rem] relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
                 <Lock size={80} className="text-indigo-500"/>
@@ -340,7 +363,6 @@ export default function App() {
              </div>
           </div>
 
-          {/* Card Patrimônio Total */}
           <div className="bg-emerald-500/[0.04] border border-emerald-500/10 p-10 rounded-[3rem]">
             <p className="text-emerald-500 text-[11px] font-black uppercase tracking-widest mb-4 italic">Patrimônio Líquido</p>
             <h3 className="text-4xl font-black text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.balance + vaultBalance)}</h3>
@@ -354,15 +376,14 @@ export default function App() {
         {activeTab === 'DASHBOARD' && (
           <div className="no-print">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-              {/* Gastos por Categoria */}
               <div className="bg-[#080808] border border-white/5 rounded-[3rem] p-10 shadow-2xl">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-lg font-black text-white uppercase italic tracking-tighter flex items-center gap-3">
                     <PieChartIcon size={20} className="text-indigo-500"/> Gastos por Categoria
                   </h3>
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{months[parseInt(filterMonth)]}</span>
                 </div>
                 <div className="space-y-7">
+                  {categoryStats.length === 0 ? <p className="text-slate-600 font-bold text-center py-10">Nenhuma despesa registrada.</p> : null}
                   {categoryStats.map(stat => {
                     const category = categoriesMap[stat.key as keyof typeof categoriesMap] || categoriesMap.OTHER;
                     return (
@@ -385,7 +406,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Fluxo de Caixa Recente */}
               <div className="bg-white/[0.01] border border-white/5 rounded-[3rem] p-10 flex flex-col">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-lg font-black text-white uppercase italic tracking-tighter">Fluxo de Caixa</h3>
@@ -417,7 +437,6 @@ export default function App() {
         {/* Transactions View */}
         {(activeTab === 'TRANSACTIONS' || activeTab === 'DASHBOARD') && (
           <div className={activeTab === 'DASHBOARD' ? 'mt-12 no-print' : 'no-print'}>
-            {/* Filtros conforme imagem */}
             <div className="flex flex-col lg:flex-row items-center gap-6 mb-10">
               <div className="relative flex-1 w-full group">
                 <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-indigo-500 transition-colors" size={20}/>
@@ -460,6 +479,7 @@ export default function App() {
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{filteredTransactions.length} registros</span>
               </div>
               <div className="divide-y divide-white/[0.03]">
+                {filteredTransactions.length === 0 ? <p className="p-10 text-center text-slate-600 font-bold">Nenhuma transação encontrada.</p> : null}
                 {filteredTransactions.map(t => {
                   const category = categoriesMap[t.category as keyof typeof categoriesMap] || categoriesMap.OTHER;
                   return (
@@ -498,9 +518,6 @@ export default function App() {
                    <p className="text-6xl font-black text-white tracking-tighter mb-4">
                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(vaultBalance)}
                    </p>
-                   <div className="flex items-center gap-2 text-white font-black text-xs bg-black/20 self-start px-4 py-2 rounded-full w-fit">
-                      <Activity size={14}/> +R$ 0,00 rendimento (est.)
-                   </div>
                 </div>
 
                 <div className="bg-white/[0.02] border border-white/5 p-12 rounded-[3.5rem] flex flex-col justify-center">
@@ -521,7 +538,6 @@ export default function App() {
              </div>
           </div>
         )}
-
       </main>
 
       {/* Modal Transação */}
@@ -553,7 +569,7 @@ export default function App() {
                 ))}
               </div>
 
-              <button className="w-full py-6 bg-indigo-600 text-white font-black rounded-[1.5rem] hover:bg-indigo-500 transition-all shadow-2xl text-xs uppercase tracking-[0.3em]">Confirmar Operação</button>
+              <button type="submit" className="w-full py-6 bg-indigo-600 text-white font-black rounded-[1.5rem] hover:bg-indigo-500 transition-all shadow-2xl text-xs uppercase tracking-[0.3em]">Confirmar Operação</button>
             </form>
           </div>
         </div>
@@ -584,7 +600,7 @@ export default function App() {
                 placeholder="0,00" 
                 className="w-full bg-white/5 border border-white/10 p-8 rounded-3xl outline-none text-4xl font-black text-white text-center" 
                />
-               <button className={`w-full py-6 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${vaultAction === 'DEPOSIT' ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-emerald-600 hover:bg-emerald-500'} text-white shadow-xl`}>
+               <button type="submit" className={`w-full py-6 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${vaultAction === 'DEPOSIT' ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-emerald-600 hover:bg-emerald-500'} text-white shadow-xl`}>
                  {vaultAction === 'DEPOSIT' ? 'Confirmar Depósito' : 'Confirmar Resgate'}
                </button>
             </form>
