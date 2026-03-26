@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '../../services/api'; // 🔌 CONECTANDO COM O SEU BACKEND
+import { api } from '../../services/api';
 import { 
   Activity, TrendingUp, TrendingDown, 
   LayoutDashboard, Receipt, Wallet, X, PlusCircle,
@@ -30,46 +30,51 @@ const months = [
 export default function App() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TRANSACTIONS' | 'VAULT'>('DASHBOARD');
-  
-  // 🚀 ESTADOS AGORA COMEÇAM VAZIOS (Esperando a API)
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
   
-  // Estados de Filtro
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [filterMonth, setFilterMonth] = useState<string>('ALL');
 
-  // Estados Formulário Transação
   const [desc, setDesc] = useState('');
-  const [val, setVal] = useState('');
+  const [val, setVal] = useState(''); // Estado para a máscara de R$
   const [tType, setTType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [cat, setCat] = useState('OTHER');
 
-  // Estados Formulário Cofre
-  const [vaultAmount, setVaultAmount] = useState('');
+  const [vaultAmount, setVaultAmount] = useState(''); // Estado para a máscara de R$ do cofre
   const [vaultAction, setVaultAction] = useState<'DEPOSIT' | 'WITHDRAW'>('DEPOSIT');
 
-  // 🔌 BUSCAR DADOS REAIS DO BACKEND
+  // 💰 FUNÇÃO DE MÁSCARA DE MOEDA (OPÇÃO 3)
+  const formatCurrency = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    const amount = (Number(digits) / 100).toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+    });
+    return amount;
+  };
+
+  // 🔌 CONVERSOR DE MÁSCARA PARA NÚMERO (Para enviar ao banco)
+  const parseCurrencyToNumber = (value: string) => {
+    return Number(value.replace(/\./g, '').replace(',', '.'));
+  };
+
   const loadData = useCallback(async () => {
     try {
       const token = localStorage.getItem('fincontrol.token');
       if (!token) {
-        router.push('/login'); // Se não tiver token, expulsa pra tela de login
+        router.push('/login');
         return;
       }
-      
-      // Busca as transações sem limite de paginação para o cálculo do dashboard
       const response = await api.get('/transactions?limit=1000');
-      // O seu backend devolve { data: [...], meta: {...} }
       setTransactions(response.data.data || []);
     } catch (err: any) {
-      console.error("Erro ao carregar dados:", err);
       if (err.response?.status === 401) {
         localStorage.removeItem('fincontrol.token');
+        document.cookie = "fincontrol.token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
         router.push('/login');
       }
     } finally {
@@ -83,10 +88,10 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('fincontrol.token');
-    router.push('/login');
+    document.cookie = "fincontrol.token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    window.location.href = '/login';
   };
 
-  // 🧠 CÁLCULO INTELIGENTE DO COFRE (Lendo o histórico real)
   const vaultBalance = useMemo(() => {
     return transactions.reduce((acc, t) => {
       if (t.description === 'Depósito no Cofre 🔒') return acc + t.amount;
@@ -95,7 +100,6 @@ export default function App() {
     }, 0);
   }, [transactions]);
 
-  // Lógica de Filtro Frontend
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
       const matchesSearch = t.description.toLowerCase().includes(search.toLowerCase());
@@ -103,24 +107,19 @@ export default function App() {
       const txDate = new Date(t.date);
       const matchesMonth = filterMonth === 'ALL' || txDate.getMonth() === parseInt(filterMonth);
       return matchesSearch && matchesType && matchesMonth;
-    });
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, search, filterType, filterMonth]);
 
-  // Sumário Financeiro Real
   const summary = useMemo(() => {
     return filteredTransactions.reduce((acc, t) => {
-      // Ignora as movimentações do cofre no fluxo de caixa normal
       if (t.description === 'Depósito no Cofre 🔒' || t.description === 'Resgate do Cofre 🔓') return acc;
-      
       if (t.type === 'INCOME') acc.income += t.amount;
       else acc.expense += t.amount;
-      
       acc.balance = acc.income - acc.expense;
       return acc;
     }, { income: 0, expense: 0, balance: 0 });
   }, [filteredTransactions]);
 
-  // Estatísticas de Gastos Reais
   const categoryStats = useMemo(() => {
     const stats: Record<string, number> = {};
     filteredTransactions.filter(t => t.type === 'EXPENSE' && t.description !== 'Depósito no Cofre 🔒').forEach(t => {
@@ -134,33 +133,30 @@ export default function App() {
     })).sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
 
-  // 🔌 SALVAR TRANSAÇÃO REAL NO BACKEND
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!desc || !val) return;
+    const numericAmount = parseCurrencyToNumber(val);
+    if (!desc || numericAmount <= 0) return;
     
     try {
       await api.post('/transactions', {
         description: desc,
-        amount: Number(val),
+        amount: numericAmount,
         type: tType,
         category: cat,
         date: new Date().toISOString()
       });
-      
       setIsModalOpen(false);
       setDesc(''); setVal('');
-      await loadData(); // Recarrega os dados do banco após salvar
+      await loadData();
     } catch (err) {
-      alert("Erro ao salvar transação. Verifique o console.");
-      console.error(err);
+      alert("Erro ao salvar transação.");
     }
   };
 
-  // 🔌 SALVAR OPERAÇÃO DE COFRE NO BACKEND
   const handleVaultOperation = async (e: React.FormEvent) => {
     e.preventDefault();
-    const amount = Number(vaultAmount);
+    const amount = parseCurrencyToNumber(vaultAmount);
     if (!amount || amount <= 0) return;
 
     try {
@@ -168,7 +164,7 @@ export default function App() {
         await api.post('/transactions', {
           description: 'Depósito no Cofre 🔒',
           amount: amount,
-          type: 'EXPENSE', // Tira do circulante
+          type: 'EXPENSE',
           category: 'OTHER',
           date: new Date().toISOString()
         });
@@ -180,27 +176,26 @@ export default function App() {
         await api.post('/transactions', {
           description: 'Resgate do Cofre 🔓',
           amount: amount,
-          type: 'INCOME', // Volta pro circulante
+          type: 'INCOME',
           category: 'OTHER',
           date: new Date().toISOString()
         });
       }
       setIsVaultModalOpen(false);
       setVaultAmount('');
-      await loadData(); // Recarrega do banco
+      await loadData();
     } catch (err) {
       alert("Erro na operação do cofre.");
     }
   };
 
   if (isLoading) {
-    return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white font-black text-2xl animate-pulse">Carregando seus dados seguros...</div>;
+    return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white font-black text-2xl animate-pulse italic">Acessando canal seguro...</div>;
   }
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 flex font-sans overflow-x-hidden">
       
-      {/* O CSS DE IMPRESSÃO CONTINUA AQUI INTACTO */}
       <style>{`
         select option { background-color: #111 !important; color: #fff !important; }
         @media print {
@@ -251,13 +246,11 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Botão de Sair Real */}
         <button onClick={handleLogout} className="mt-auto flex items-center justify-center gap-3 w-full p-4 border border-rose-500/20 bg-rose-500/5 text-rose-500 hover:bg-rose-500 hover:text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all">
           <LogOut size={16}/> Sair da Conta
         </button>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 p-8 lg:p-12 max-w-7xl mx-auto w-full overflow-y-auto">
         
         {/* PDF EXPORT LAYOUT */}
@@ -372,7 +365,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* DashBoard View */}
         {activeTab === 'DASHBOARD' && (
           <div className="no-print">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
@@ -397,8 +389,9 @@ export default function App() {
                           </div>
                           <span className="text-xs font-black text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stat.value)}</span>
                         </div>
+                        {/* 📊 BARRAS VIVAS (OPÇÃO 1) */}
                         <div className="h-2 w-full bg-white/[0.03] rounded-full overflow-hidden">
-                          <div className={`h-full transition-all duration-1000 ${category.fill}`} style={{ width: `${stat.percentage}%` }}></div>
+                          <div className={`h-full transition-all duration-1000 ease-out ${category.fill}`} style={{ width: `${stat.percentage}%` }}></div>
                         </div>
                       </div>
                     );
@@ -434,7 +427,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Transactions View */}
         {(activeTab === 'TRANSACTIONS' || activeTab === 'DASHBOARD') && (
           <div className={activeTab === 'DASHBOARD' ? 'mt-12 no-print' : 'no-print'}>
             <div className="flex flex-col lg:flex-row items-center gap-6 mb-10">
@@ -507,7 +499,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Vault View */}
         {activeTab === 'VAULT' && (
           <div className="no-print animate-in fade-in duration-500">
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
@@ -540,7 +531,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Modal Transação */}
+      {/* 💰 MODAL TRANSAÇÃO COM MÁSCARA (OPÇÃO 3) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-6 no-print">
           <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-2xl rounded-[3.5rem] p-12 shadow-2xl relative overflow-hidden">
@@ -558,7 +549,10 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <input required type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Descrição..." className="bg-white/5 border border-white/5 p-6 rounded-[1.5rem] outline-none text-white font-bold placeholder:text-slate-700" />
-                <input required type="number" step="0.01" value={val} onChange={e => setVal(e.target.value)} placeholder="Valor R$" className="bg-white/5 border border-white/5 p-6 rounded-[1.5rem] outline-none text-xl font-black text-white" />
+                <div className="relative">
+                  <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 font-black">R$</span>
+                  <input required type="text" value={val} onChange={e => setVal(formatCurrency(e.target.value))} placeholder="0,00" className="w-full bg-white/5 border border-white/5 p-6 pl-14 rounded-[1.5rem] outline-none text-xl font-black text-white" />
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
@@ -575,7 +569,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal Cofre */}
+      {/* 💰 MODAL COFRE COM MÁSCARA (OPÇÃO 3) */}
       {isVaultModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-6 no-print">
           <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-lg rounded-[3.5rem] p-12 shadow-2xl relative overflow-hidden">
@@ -591,15 +585,10 @@ export default function App() {
                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest text-center mb-4">
                  {vaultAction === 'DEPOSIT' ? 'O valor sairá do seu saldo circulante' : 'O valor voltará para o seu saldo circulante'}
                </p>
-               <input 
-                required 
-                type="number" 
-                step="0.01" 
-                value={vaultAmount} 
-                onChange={e => setVaultAmount(e.target.value)} 
-                placeholder="0,00" 
-                className="w-full bg-white/5 border border-white/10 p-8 rounded-3xl outline-none text-4xl font-black text-white text-center" 
-               />
+               <div className="relative">
+                <span className="absolute left-8 top-1/2 -translate-y-1/2 text-slate-500 font-black text-2xl">R$</span>
+                <input required type="text" value={vaultAmount} onChange={e => setVaultAmount(formatCurrency(e.target.value))} placeholder="0,00" className="w-full bg-white/5 border border-white/10 p-8 pl-16 rounded-3xl outline-none text-4xl font-black text-white text-center" />
+               </div>
                <button type="submit" className={`w-full py-6 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${vaultAction === 'DEPOSIT' ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-emerald-600 hover:bg-emerald-500'} text-white shadow-xl`}>
                  {vaultAction === 'DEPOSIT' ? 'Confirmar Depósito' : 'Confirmar Resgate'}
                </button>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Activity, ArrowRight, User, Mail, Lock } from "lucide-react";
-import { api } from "@/services/api";
+import { api } from "../../services/api";
 
 export default function Register() {
   const router = useRouter();
@@ -22,11 +22,28 @@ export default function Register() {
     setLoading(true);
 
     try {
-      await api.post("/auth/register", { name, email, password });
+      // 1. Cria a conta
+      const response = await api.post("/auth/register", { name, email, password });
+      
+      // 🛡️ 2. Auto-Login: Busca o token que o backend deve retornar no registro
+      const token = response.data.access_token || response.data.accessToken || response.data.token;
 
-      router.push("/login");
+      if (token) {
+        // Grava no LocalStorage
+        localStorage.setItem('fincontrol.token', token);
+        
+        // 🚀 Grava no COOKIE (Vital para o Middleware funcionar)
+        document.cookie = `fincontrol.token=${token}; path=/; max-age=86400; SameSite=Lax`;
+
+        // Vai direto para o Dashboard
+        window.location.href = '/dashboard';
+      } else {
+        // Se o seu backend não loga automaticamente, mandamos para o login
+        router.push("/login");
+      }
     } catch (err: any) {
-      setError("Erro ao criar conta. Tente outro e-mail.");
+      console.error("Erro no registro:", err);
+      setError(err.response?.data?.message || "Erro ao criar conta. Tente outro e-mail.");
     } finally {
       setLoading(false);
     }
@@ -47,12 +64,14 @@ export default function Register() {
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-2xl mb-4">
               <Activity className="text-white" size={28} />
             </div>
-            <h1 className="text-2xl font-bold text-white">FinControl</h1>
-            <p className="text-slate-500 text-sm mt-1">Crie sua conta</p>
+            <h1 className="text-3xl font-black text-white tracking-tighter italic">
+              Fin<span className="text-indigo-500">Control</span>
+            </h1>
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest mt-2">Crie sua conta</p>
           </div>
 
           {error && (
-            <div className="mb-4 text-red-400 text-sm text-center">
+            <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm rounded-xl text-center font-bold">
               {error}
             </div>
           )}
@@ -63,11 +82,12 @@ export default function Register() {
             <div className="relative">
               <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
               <input
+                required
                 type="text"
                 placeholder="Seu nome"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/[0.03] border border-white/[0.1] focus:border-indigo-500/50 outline-none text-white placeholder:text-slate-700"
+                className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/[0.03] border border-white/[0.1] focus:border-indigo-500/50 outline-none text-white transition-all font-medium"
               />
             </div>
 
@@ -75,11 +95,12 @@ export default function Register() {
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
               <input
+                required
                 type="email"
                 placeholder="Seu e-mail"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/[0.03] border border-white/[0.1] focus:border-indigo-500/50 outline-none text-white placeholder:text-slate-700"
+                className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/[0.03] border border-white/[0.1] focus:border-indigo-500/50 outline-none text-white transition-all font-medium"
               />
             </div>
 
@@ -87,20 +108,21 @@ export default function Register() {
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
               <input
+                required
                 type="password"
                 placeholder="Sua senha"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/[0.03] border border-white/[0.1] focus:border-indigo-500/50 outline-none text-white placeholder:text-slate-700"
+                className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/[0.03] border border-white/[0.1] focus:border-indigo-500/50 outline-none text-white transition-all font-medium"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-slate-200 transition disabled:bg-slate-800 disabled:text-slate-500"
+              className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl shadow-indigo-600/20 flex items-center justify-center gap-3 disabled:opacity-50"
             >
-              {loading ? "Criando..." : (
+              {loading ? "A criar..." : (
                 <>
                   Criar Conta <ArrowRight size={20} />
                 </>
@@ -109,9 +131,9 @@ export default function Register() {
 
           </form>
 
-          <p className="text-center mt-6 text-sm text-slate-500">
+          <p className="text-center mt-8 text-sm text-slate-500 font-medium">
             Já tem conta?{" "}
-            <Link href="/login" className="text-white hover:text-indigo-400 font-bold">
+            <Link href="/login" className="text-white hover:text-indigo-400 font-bold transition-colors">
               Fazer login
             </Link>
           </p>
