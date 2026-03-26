@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. Criamos a lista fixa de categorias
+enum Category {
+  FOOD        // Alimentação
+  TRANSPORT   // Transporte
+  HOUSING     // Moradia
+  SHOPPING    // Compras
+  SALARY      // Salário
+  OTHER       // Outros
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  amount      Float
+  type        String   // INCOME | EXPENSE
+  
+  // 2. Adicionamos o campo de categoria na tabela
+  // Colocamos @default(OTHER) para não quebrar as transações que você já criou antes!
+  category    Category @default(OTHER) 
+  
+  description String
+  date        DateTime
+  createdAt   DateTime @default(now())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+}
