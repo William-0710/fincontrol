@@ -10,7 +10,7 @@ import {
   Search, FileText, Calendar, PieChart as PieChartIcon,
   ChevronDown, ArrowUpRight, ArrowDownRight,
   ChevronRight, Lock, Unlock, ArrowRightLeft,
-  Printer, LogOut
+  Printer, LogOut, Pencil, Trash2 // 🚀 Adicionados Pencil e Trash2
 } from 'lucide-react';
 
 const categoriesMap = {
@@ -36,19 +36,22 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
   
+  // 🚀 ESTADOS PARA EDIÇÃO
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentId, setCurrentId] = useState<string | null>(null);
+
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [filterMonth, setFilterMonth] = useState<string>('ALL');
 
   const [desc, setDesc] = useState('');
-  const [val, setVal] = useState(''); // Estado para a máscara de R$
+  const [val, setVal] = useState(''); 
   const [tType, setTType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [cat, setCat] = useState('OTHER');
 
-  const [vaultAmount, setVaultAmount] = useState(''); // Estado para a máscara de R$ do cofre
+  const [vaultAmount, setVaultAmount] = useState(''); 
   const [vaultAction, setVaultAction] = useState<'DEPOSIT' | 'WITHDRAW'>('DEPOSIT');
 
-  // 💰 FUNÇÃO DE MÁSCARA DE MOEDA (OPÇÃO 3)
   const formatCurrency = (value: string) => {
     const digits = value.replace(/\D/g, "");
     const amount = (Number(digits) / 100).toLocaleString('pt-BR', {
@@ -57,18 +60,12 @@ export default function App() {
     return amount;
   };
 
-  // 🔌 CONVERSOR DE MÁSCARA PARA NÚMERO (Para enviar ao banco)
   const parseCurrencyToNumber = (value: string) => {
     return Number(value.replace(/\./g, '').replace(',', '.'));
   };
 
   const loadData = useCallback(async () => {
     try {
-      const token = localStorage.getItem('fincontrol.token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
       const response = await api.get('/transactions?limit=1000');
       setTransactions(response.data.data || []);
     } catch (err: any) {
@@ -85,6 +82,28 @@ export default function App() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // 🚀 FUNÇÃO PARA DELETAR
+  const handleDelete = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir esta transação?")) return;
+    try {
+      await api.delete(`/transactions/${id}`);
+      await loadData();
+    } catch (err) {
+      alert("Erro ao excluir transação.");
+    }
+  };
+
+  // 🚀 FUNÇÃO PARA PREPARAR EDIÇÃO
+  const handleEditClick = (t: any) => {
+    setDesc(t.description);
+    setVal(formatCurrency((t.amount * 100).toString())); // Preenche a máscara corretamente
+    setTType(t.type);
+    setCat(t.category);
+    setCurrentId(t.id);
+    setIsEditing(true);
+    setIsModalOpen(true);
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('fincontrol.token');
@@ -139,18 +158,33 @@ export default function App() {
     if (!desc || numericAmount <= 0) return;
     
     try {
-      await api.post('/transactions', {
-        description: desc,
-        amount: numericAmount,
-        type: tType,
-        category: cat,
-        date: new Date().toISOString()
-      });
+      if (isEditing && currentId) {
+        // 🚀 CHAMADA DE UPDATE (PATCH)
+        await api.patch(`/transactions/${currentId}`, {
+          description: desc,
+          amount: numericAmount,
+          type: tType,
+          category: cat,
+          date: new Date().toISOString()
+        });
+      } else {
+        // CHAMADA DE CREATE (POST)
+        await api.post('/transactions', {
+          description: desc,
+          amount: numericAmount,
+          type: tType,
+          category: cat,
+          date: new Date().toISOString()
+        });
+      }
+      
       setIsModalOpen(false);
+      setIsEditing(false);
+      setCurrentId(null);
       setDesc(''); setVal('');
       await loadData();
     } catch (err) {
-      alert("Erro ao salvar transação.");
+      alert("Erro ao processar transação.");
     }
   };
 
@@ -253,62 +287,6 @@ export default function App() {
 
       <main className="flex-1 p-8 lg:p-12 max-w-7xl mx-auto w-full overflow-y-auto">
         
-        {/* PDF EXPORT LAYOUT */}
-        <div className="print-only pdf-container">
-          <div className="pdf-header">
-            <div>
-              <h1 className="text-3xl font-black uppercase tracking-tighter italic">Relatório de Desempenho</h1>
-              <p className="text-xs font-bold uppercase tracking-widest opacity-80 mt-1">Status Consolidado • 2024</p>
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-black italic">FinControl</p>
-              <p className="text-[10px] uppercase font-bold tracking-widest mt-1">Emitido em: {new Date().toLocaleDateString()}</p>
-            </div>
-          </div>
-
-          <div className="pdf-summary">
-            <div className="summary-item">
-              <p className="text-[10px] font-black text-slate-500 uppercase">Receitas</p>
-              <p className="text-xl font-black text-emerald-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.income)}</p>
-            </div>
-            <div className="summary-item">
-              <p className="text-[10px] font-black text-slate-500 uppercase">Despesas</p>
-              <p className="text-xl font-black text-rose-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.expense)}</p>
-            </div>
-            <div className="summary-item" style={{ background: '#4f46e5', color: 'white' }}>
-              <p className="text-[10px] font-black opacity-70 uppercase">Saldo Final</p>
-              <p className="text-xl font-black">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.balance)}</p>
-            </div>
-          </div>
-
-          <table className="pdf-table mt-10">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Descrição</th>
-                <th>Categoria</th>
-                <th>Operação</th>
-                <th>Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTransactions.map(t => (
-                <tr key={t.id}>
-                  <td>{new Date(t.date).toLocaleDateString()}</td>
-                  <td className="font-bold uppercase italic text-[#4f46e5]">{t.description}</td>
-                  <td>{categoriesMap[t.category as keyof typeof categoriesMap]?.label || 'Outros'}</td>
-                  <td>
-                    <span className={`pdf-badge ${t.type === 'INCOME' ? 'badge-income' : 'badge-expense'}`}>
-                      {t.type === 'INCOME' ? 'Crédito' : 'Débito'}
-                    </span>
-                  </td>
-                  <td>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
         {/* Dashboard Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-12 no-print">
           <div>
@@ -324,7 +302,11 @@ export default function App() {
               <Printer size={18}/> Imprimir PDF
             </button>
             <button 
-              onClick={() => activeTab === 'VAULT' ? setIsVaultModalOpen(true) : setIsModalOpen(true)} 
+              onClick={() => {
+                setIsEditing(false); // Garante que abre em modo "Novo"
+                setDesc(''); setVal('');
+                activeTab === 'VAULT' ? setIsVaultModalOpen(true) : setIsModalOpen(true)
+              }} 
               className="flex items-center gap-3 px-10 py-4 bg-indigo-600 text-white rounded-[1.5rem] text-sm font-black hover:bg-indigo-500 shadow-2xl shadow-indigo-600/40 transition-all"
             >
               <PlusCircle size={20}/> {activeTab === 'VAULT' ? 'Operar Cofre' : 'Novo Lançamento'}
@@ -365,6 +347,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* DashBoard View */}
         {activeTab === 'DASHBOARD' && (
           <div className="no-print">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
@@ -389,7 +372,6 @@ export default function App() {
                           </div>
                           <span className="text-xs font-black text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stat.value)}</span>
                         </div>
-                        {/* 📊 BARRAS VIVAS (OPÇÃO 1) */}
                         <div className="h-2 w-full bg-white/[0.03] rounded-full overflow-hidden">
                           <div className={`h-full transition-all duration-1000 ease-out ${category.fill}`} style={{ width: `${stat.percentage}%` }}></div>
                         </div>
@@ -421,12 +403,10 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <button onClick={() => setActiveTab('TRANSACTIONS')} className="w-full py-6 bg-white/5 border border-white/5 rounded-[2rem] text-xs font-black uppercase tracking-[0.3em] hover:bg-white/10 transition-all text-slate-500 hover:text-white">
-              Ver Histórico Completo <ChevronRight size={14} className="inline ml-2"/>
-            </button>
           </div>
         )}
 
+        {/* Transactions & Shared View */}
         {(activeTab === 'TRANSACTIONS' || activeTab === 'DASHBOARD') && (
           <div className={activeTab === 'DASHBOARD' ? 'mt-12 no-print' : 'no-print'}>
             <div className="flex flex-col lg:flex-row items-center gap-6 mb-10">
@@ -474,6 +454,7 @@ export default function App() {
                 {filteredTransactions.length === 0 ? <p className="p-10 text-center text-slate-600 font-bold">Nenhuma transação encontrada.</p> : null}
                 {filteredTransactions.map(t => {
                   const category = categoriesMap[t.category as keyof typeof categoriesMap] || categoriesMap.OTHER;
+                  // Ignora no histórico normal se for depósito do cofre (opcional, dependendo do gosto)
                   return (
                     <div key={t.id} className="flex items-center justify-between p-8 hover:bg-white/[0.02] transition-all group">
                       <div className="flex items-center gap-6">
@@ -485,11 +466,31 @@ export default function App() {
                           <p className="text-[10px] text-slate-600 uppercase font-black tracking-widest mt-1.5">{category.label} • {new Date(t.date).toLocaleDateString('pt-BR')}</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className={`text-2xl font-black italic tracking-tighter ${t.type === 'INCOME' ? 'text-emerald-500' : 'text-white'}`}>
-                          {t.type === 'INCOME' ? '+' : '-'} {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}
-                        </p>
-                        <p className="text-[10px] text-slate-700 font-black uppercase tracking-widest mt-1 italic">Operação Confirmada</p>
+                      
+                      {/* 🚀 BOTÕES DE AÇÃO (EDIÇÃO E EXCLUSÃO) */}
+                      <div className="flex items-center gap-8">
+                        <div className="text-right">
+                          <p className={`text-2xl font-black italic tracking-tighter ${t.type === 'INCOME' ? 'text-emerald-500' : 'text-white'}`}>
+                            {t.type === 'INCOME' ? '+' : '-'} {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}
+                          </p>
+                        </div>
+                        
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all no-print">
+                          <button 
+                            onClick={() => handleEditClick(t)}
+                            className="p-3 bg-white/5 hover:bg-indigo-600 hover:text-white text-slate-500 rounded-xl transition-all"
+                            title="Editar"
+                          >
+                            <Pencil size={18}/>
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(t.id)}
+                            className="p-3 bg-white/5 hover:bg-rose-600 hover:text-white text-slate-500 rounded-xl transition-all"
+                            title="Excluir"
+                          >
+                            <Trash2 size={18}/>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -499,14 +500,15 @@ export default function App() {
           </div>
         )}
 
+        {/* Vault View - Simplificado */}
         {activeTab === 'VAULT' && (
           <div className="no-print animate-in fade-in duration-500">
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-                <div className="bg-indigo-600 p-12 rounded-[3.5rem] relative overflow-hidden shadow-2xl">
+                <div className="bg-indigo-600 p-12 rounded-[3.5rem] relative overflow-hidden shadow-2xl text-white">
                    <Lock className="absolute bottom-0 right-0 p-8 text-white/10" size={240}/>
-                   <h3 className="text-2xl font-black text-white italic uppercase mb-2">Reserva Segura</h3>
-                   <p className="text-indigo-100/70 text-sm font-bold uppercase tracking-widest mb-8">Capital Não Circulante</p>
-                   <p className="text-6xl font-black text-white tracking-tighter mb-4">
+                   <h3 className="text-2xl font-black italic uppercase mb-2">Reserva Segura</h3>
+                   <p className="opacity-70 text-sm font-bold uppercase tracking-widest mb-8">Capital Protegido</p>
+                   <p className="text-6xl font-black tracking-tighter">
                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(vaultBalance)}
                    </p>
                 </div>
@@ -518,9 +520,6 @@ export default function App() {
                       </div>
                       <h4 className="text-xl font-black text-white uppercase italic tracking-tighter">Movimentar Cofre</h4>
                    </div>
-                   <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-                     Mova dinheiro entre sua conta corrente e sua reserva. Dinheiro no cofre <strong>não aparece</strong> no saldo disponível para gastos diários.
-                   </p>
                    <div className="flex gap-4">
                       <button onClick={() => {setVaultAction('DEPOSIT'); setIsVaultModalOpen(true);}} className="flex-1 py-5 bg-white text-black rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200 transition-all">Guardar Dinheiro</button>
                       <button onClick={() => {setVaultAction('WITHDRAW'); setIsVaultModalOpen(true);}} className="flex-1 py-5 bg-white/5 border border-white/10 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-white/10 transition-all">Resgatar</button>
@@ -531,14 +530,21 @@ export default function App() {
         )}
       </main>
 
-      {/* 💰 MODAL TRANSAÇÃO COM MÁSCARA (OPÇÃO 3) */}
+      {/* 💰 MODAL TRANSAÇÃO (NOVO E EDIÇÃO) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-6 no-print">
           <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-2xl rounded-[3.5rem] p-12 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
+            <div className={`absolute top-0 left-0 w-full h-2 ${isEditing ? 'bg-amber-500' : 'bg-indigo-600'}`}></div>
             <div className="flex justify-between items-center mb-10">
-              <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">Novo Lançamento</h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-4 bg-white/5 rounded-2xl text-slate-500 hover:text-white transition-all"><X size={24}/></button>
+              <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">
+                {isEditing ? 'Editar Lançamento' : 'Novo Lançamento'}
+              </h2>
+              <button 
+                onClick={() => {setIsModalOpen(false); setIsEditing(false);}} 
+                className="p-4 bg-white/5 rounded-2xl text-slate-500 hover:text-white transition-all"
+              >
+                <X size={24}/>
+              </button>
             </div>
             
             <form onSubmit={handleAddTransaction} className="space-y-8">
@@ -563,13 +569,15 @@ export default function App() {
                 ))}
               </div>
 
-              <button type="submit" className="w-full py-6 bg-indigo-600 text-white font-black rounded-[1.5rem] hover:bg-indigo-500 transition-all shadow-2xl text-xs uppercase tracking-[0.3em]">Confirmar Operação</button>
+              <button type="submit" className={`w-full py-6 text-white font-black rounded-[1.5rem] transition-all shadow-2xl text-xs uppercase tracking-[0.3em] ${isEditing ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                {isEditing ? 'Salvar Alterações' : 'Confirmar Operação'}
+              </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* 💰 MODAL COFRE COM MÁSCARA (OPÇÃO 3) */}
+      {/* 💰 MODAL COFRE */}
       {isVaultModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-6 no-print">
           <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-lg rounded-[3.5rem] p-12 shadow-2xl relative overflow-hidden">
@@ -582,9 +590,6 @@ export default function App() {
             </div>
 
             <form onSubmit={handleVaultOperation} className="space-y-6">
-               <p className="text-slate-500 text-xs font-bold uppercase tracking-widest text-center mb-4">
-                 {vaultAction === 'DEPOSIT' ? 'O valor sairá do seu saldo circulante' : 'O valor voltará para o seu saldo circulante'}
-               </p>
                <div className="relative">
                 <span className="absolute left-8 top-1/2 -translate-y-1/2 text-slate-500 font-black text-2xl">R$</span>
                 <input required type="text" value={vaultAmount} onChange={e => setVaultAmount(formatCurrency(e.target.value))} placeholder="0,00" className="w-full bg-white/5 border border-white/10 p-8 pl-16 rounded-3xl outline-none text-4xl font-black text-white text-center" />

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request, Query, Patch } from '@nestjs/common'; // 👈 Adicionei o Patch aqui
 import { TransactionsService } from './transactions.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -17,6 +17,17 @@ export class TransactionsController {
   create(@Request() req, @Body() createTransactionDto: CreateTransactionDto) {
     const userId = this.getUserId(req);
     return this.transactionsService.create(userId, createTransactionDto);
+  }
+
+  // 🚀 NOVO ENDPOINT: Edição de transação
+  @Patch(':id')
+  update(
+    @Request() req, 
+    @Param('id') id: string, 
+    @Body() updateTransactionDto: Partial<CreateTransactionDto>
+  ) {
+    const userId = this.getUserId(req);
+    return this.transactionsService.update(id, userId, updateTransactionDto);
   }
 
   @Get()

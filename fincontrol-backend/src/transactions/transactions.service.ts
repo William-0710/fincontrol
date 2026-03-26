@@ -15,12 +15,10 @@ export class TransactionsService {
     });
   }
 
-  // Recebe a página atual e o limite de itens por página
   async findAll(userId: string, search?: string, type?: string, period?: string, page: number = 1, limit: number = 5) {
     const now = new Date();
     let dateFilter: any = undefined;
 
-    // Filtro de datas direto na base de dados
     if (period && period !== 'ALL') {
       if (period === '7DAYS') {
         const sevenDaysAgo = new Date();
@@ -50,7 +48,6 @@ export class TransactionsService {
       whereCondition.date = dateFilter;
     }
 
-    // Procura os itens E conta o total de resultados ao mesmo tempo
     const [transactions, total] = await Promise.all([
       this.prisma.transaction.findMany({
         where: whereCondition,
@@ -61,7 +58,6 @@ export class TransactionsService {
       this.prisma.transaction.count({ where: whereCondition }),
     ]);
 
-    // Devolve os dados e a meta-informação de paginação
     return {
       data: transactions,
       meta: {
@@ -79,6 +75,23 @@ export class TransactionsService {
     });
     if (!transaction) throw new NotFoundException('Transação não encontrada');
     return transaction;
+  }
+
+  // 🚀 NOVO MÉTODO: UPDATE
+  async update(id: string, userId: string, data: Partial<CreateTransactionDto>) {
+    // Reutiliza o findOne para garantir que a transação existe e pertence ao usuário
+    await this.findOne(id, userId); 
+
+    return this.prisma.transaction.update({
+      where: { id },
+      data: {
+        description: data.description,
+        amount: data.amount,
+        type: data.type,
+        category: data.category,
+        date: data.date,
+      },
+    });
   }
 
   async remove(id: string, userId: string) {
