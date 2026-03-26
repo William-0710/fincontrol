@@ -14,6 +14,6 @@ async function bootstrap() {
     forbidNonWhitelisted: true, // Dá erro se o utilizador enviar campos que não existem
   }));
 
-  await app.listen(3333)
+  await app.listen(process.env.PORT || 3333);
 }
 bootstrap();
